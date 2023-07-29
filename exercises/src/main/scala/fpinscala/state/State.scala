@@ -121,7 +121,7 @@ object State {
     })
 
   def flatten[S, A](list: List[State[S, A]]): State[S, Unit] =
-    list.foldLeft(unit[S, Unit](Unit))((acc, s) => compose(acc, s).map(_ => Unit))
+    list.foldLeft(unit[S, Unit](()))((acc, s) => compose(acc, s).map(_ => ()))
 }
 
 case object Coin extends Input
