@@ -1,12 +1,6 @@
 package fpinscala.testing
 
-import fpinscala.laziness.Stream
-import fpinscala.state._
-import fpinscala.parallelism._
-import fpinscala.parallelism.Par.Par
-import Gen._
-import Prop._
-import java.util.concurrent.{Executors,ExecutorService}
+import scala.language.implicitConversions
 
 /*
 The library developed in this chapter goes through several iterations. This file is just the
@@ -21,12 +15,20 @@ object Prop {
 }
 
 object Gen {
+  implicit def toGenOps[A](a: Gen[A]): GenOps[A] = new GenOps[A](a)
+
   def unit[A](a: => A): Gen[A] = ???
+  def combine[A, B](a: Gen[A], b: Gen[B]): Gen[(A, B)] = ???
 }
 
 trait Gen[A] {
   def map[A,B](f: A => B): Gen[B] = ???
   def flatMap[A,B](f: A => Gen[B]): Gen[B] = ???
+}
+
+
+class GenOps[A] (val gen: Gen[A]) {
+  def combine[B](b: Gen[B]): Gen[(A, B)] = Gen.combine(gen, b)
 }
 
 trait SGen[+A] {

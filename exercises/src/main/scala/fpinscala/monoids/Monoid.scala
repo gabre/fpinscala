@@ -1,7 +1,7 @@
 package fpinscala.monoids
 
 import fpinscala.parallelism.Nonblocking._
-import fpinscala.parallelism.Nonblocking.Par.toParOps // infix syntax for `Par.map`, `Par.flatMap`, etc
+
 import language.higherKinds
 
 trait Monoid[A] {
@@ -10,6 +10,11 @@ trait Monoid[A] {
 }
 
 object Monoid {
+
+  def dual[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
+    override def op(a1: A, a2: A): A = m.op(a2, a1)
+    override def zero: A = m.zero
+  }
 
   val stringMonoid = new Monoid[String] {
     def op(a1: String, a2: String) = a1 + a2
@@ -21,45 +26,71 @@ object Monoid {
     val zero = Nil
   }
 
-  val intAddition: Monoid[Int] = ???
+  val intAddition: Monoid[Int] = new Monoid[Int] {
+    override def op(a1: Int, a2: Int): Int = a1 + a2
+    override def zero: Int = 0
+  }
 
-  val intMultiplication: Monoid[Int] = ???
+  val intMultiplication: Monoid[Int] = new Monoid[Int] {
+    override def op(a1: Int, a2: Int): Int = a1 * a2
+    override def zero: Int = 1
+  }
 
-  val booleanOr: Monoid[Boolean] = ???
+  val booleanOr: Monoid[Boolean] = new Monoid[Boolean] {
+    override def op(a1: Boolean, a2: Boolean): Boolean = a1 || a2
+    override def zero: Boolean = false
+  }
 
-  val booleanAnd: Monoid[Boolean] = ???
+  val booleanAnd: Monoid[Boolean] = new Monoid[Boolean] {
+    override def op(a1: Boolean, a2: Boolean): Boolean = a1 && a2
+    override def zero: Boolean = true
+  }
 
-  def optionMonoid[A]: Monoid[Option[A]] = ???
+  def optionMonoid[A]: Monoid[Option[A]] = new Monoid[Option[A]] {
+    override def op(a1: Option[A], a2: Option[A]): Option[A] = a1 orElse a2
+    override def zero: Option[A] = None
+  }
 
-  def endoMonoid[A]: Monoid[A => A] = ???
-
-  // TODO: Placeholder for `Prop`. Remove once you have implemented the `Prop`
-  // data type from Part 2.
-  trait Prop {}
-
-  // TODO: Placeholder for `Gen`. Remove once you have implemented the `Gen`
-  // data type from Part 2.
+  def endoMonoid[A]: Monoid[A => A] = new Monoid[A => A] {
+    override def op(a1: A => A, a2: A => A): A => A = a1 compose a2
+    override def zero: A => A = identity
+  }
 
   import fpinscala.testing._
   import Prop._
-  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop = ???
+  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop = {
+    forAll(gen combine gen combine gen) { abc =>
+      val ((a, b), c) = abc
+      a == m.op(a, m.zero)
+      m.op(m.op(a, b), c) == m.op(a, m.op(b, c))
+    }
+  }
 
   def trimMonoid(s: String): Monoid[String] = ???
 
   def concatenate[A](as: List[A], m: Monoid[A]): A =
-    ???
+    as.foldLeft(m.zero)((acc, item) => m.op(item, acc))
 
   def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
-    ???
+    as.foldLeft(m.zero)((acc, item) => m.op(acc, f(item)))
 
   def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
-    ???
+    foldMap[A, B => B](as, endoMonoid)(a => f(a, _))(z)
 
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
-    ???
+    foldMap[A, B => B](as, dual(endoMonoid))(a => f(_, a))(z)
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    ???
+  // But if we have a monoid, we can reduce a list using a balanced fold,
+  // which can be more efficient for some operations and also allows for parallelism.
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+    if (as.length == 0) m.zero
+    else if (as.length == 1) f(as(0))
+    else {
+      val middle = as.length / 2
+      val (a, b) = as.splitAt(middle)
+      m.op(foldMapV(a, m)(f), foldMapV(b, m)(f))
+    }
+  }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
     ???
