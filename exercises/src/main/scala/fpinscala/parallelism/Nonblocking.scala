@@ -4,6 +4,7 @@ import java.util.concurrent.{Callable, CountDownLatch, ExecutorService}
 import java.util.concurrent.atomic.AtomicReference
 import language.implicitConversions
 
+// HARD
 object Nonblocking {
 
   trait Future[+A] {
@@ -12,6 +13,7 @@ object Nonblocking {
 
   type Par[+A] = ExecutorService => Future[A]
 
+  // Parallel computations
   object Par {
 
     def run[A](es: ExecutorService)(p: Par[A]): A = {
@@ -49,18 +51,32 @@ object Nonblocking {
         }
       }
 
+    /*
+    Goal: allow explicit forking (marking of asynchronous computations, starting a new logical thread)
+
+    fork marks a computation for concurrent evaluation. The evaluation won’t actually occur until forced by run.
+
+    fork(x) should do the same thing as x, but asynchronously, in a logical thread separate from the main thread.
+
+    This is the simplest and most natural implementation of fork,but there are some problems with it—for one,
+    the outer Callable will block waiting for the “inner” task to complete. Since this blocking occupies a
+    thread in our thread pool, or whatever resource backs the ExecutorService, this implies that we’re losing
+    out on some potential parallelism. Essentially, we’re using two threads when one should suffice. This is
+    a symptom of a more serious problem with the implementation that we’ll discuss later in the chapter.
+     */
     def fork[A](a: => Par[A]): Par[A] =
       es => new Future[A] {
         def apply(cb: A => Unit): Unit =
           eval(es)(a(es)(cb))
       }
 
-    def fork_[A](a: => Par[A]): Par[A] =
-      es => new Future[A] {
-        override private[parallelism] def apply(cb: A => Unit): Unit = {
-          a(es)(a => cb(a))
-        }
-      }
+//    This is not good, we MUST call eval which submits a new Callable.
+//    def fork_[A](a: => Par[A]): Par[A] =
+//      es => new Future[A] {
+//        override private[parallelism] def apply(cb: A => Unit): Unit = {
+//          a(es)(a => cb(a))
+//        }
+//      }
 
     /**
      * Helper function for constructing `Par` values out of calls to non-blocking continuation-passing-style APIs.
@@ -76,7 +92,6 @@ object Nonblocking {
      */
     def eval(es: ExecutorService)(r: => Unit): Unit =
       es.submit(new Callable[Unit] { def call = r })
-
 
     def map2[A,B,C](p: Par[A], p2: Par[B])(f: (A,B) => C): Par[C] =
       es => new Future[C] {
