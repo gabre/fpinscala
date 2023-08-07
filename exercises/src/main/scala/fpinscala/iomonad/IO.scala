@@ -59,6 +59,8 @@ object IO1 {
                              */
 
   sealed trait IO[A] { self =>
+    // GH: The important piece is that this is a DEF! Not a val!
+    // And a call-by-name parameter is used to define it so "it is lazy".
     def run: A
     def map[B](f: A => B): IO[B] =
       new IO[B] { def run = f(self.run) }
@@ -241,6 +243,7 @@ object IO2aTests {
     val gFortyTwo = g(42)
     println("g(42) = " + gFortyTwo)
     println("run(g(42)) = " + run(gFortyTwo))
+    IO1.PrintLine("Moo")
   }
 }
 

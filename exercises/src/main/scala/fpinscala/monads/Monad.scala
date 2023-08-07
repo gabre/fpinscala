@@ -1,15 +1,13 @@
 package fpinscala
 package monads
 
-import fpinscala.parallelism.Nonblocking.Future
-import parsing._
-import testing._
-import parallelism._
-import state._
-import parallelism.Par._
+import fpinscala.parallelism.Par._
+import fpinscala.parallelism._
+import fpinscala.parsing._
+import fpinscala.state._
+import fpinscala.testing._
 
-import language.higherKinds
-import scala.::
+import scala.language.higherKinds
 
 
 trait Functor[F[_]] {
@@ -94,7 +92,10 @@ object Monad {
     override def flatMap[A, B](ma: List[A])(f: A => List[B]): List[B] = flatMap(ma)(f)
   }
 
-  def stateMonad[S] = ???
+  def stateMonad[S] = new Monad[({type f[x] = State[S,x]})#f] {
+    def unit[A](a: => A): State[S, A] = unit(a)
+    def flatMap[A, B](ma: State[S, A])(f: A => State[S, B]): State[S, B] = flatMap(ma)(f)
+  }
 
   val idMonad: Monad[Id] = new Monad[Id] {
     override def unit[A](a: => A): Id[A] = new Id[A](a)
