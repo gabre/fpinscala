@@ -2,6 +2,7 @@ package fpinscala.localeffects
 
 import fpinscala.monads._
 
+// HARD
 object Mutable {
   def quicksort(xs: List[Int]): List[Int] = if (xs.isEmpty) xs else {
     val arr = xs.toArray
@@ -80,7 +81,7 @@ trait RunnableST[A] {
 }
 
 // Scala requires an implicit Manifest for constructing arrays.
-sealed abstract class STArray[S,A](implicit manifest: Manifest[A]) {
+sealed abstract class STArray[S,A](implicit manifest: Manifest[A]) { self =>
   protected def value: Array[A]
   def size: ST[S,Int] = ST(value.size)
 
@@ -98,7 +99,17 @@ sealed abstract class STArray[S,A](implicit manifest: Manifest[A]) {
   // Turn the array into an immutable list
   def freeze: ST[S,List[A]] = ST(value.toList)
 
-  def fill(xs: Map[Int,A]): ST[S,Unit] = ???
+  def fill_1(xs: Map[Int,A]): ST[S,Unit] = new ST[S,Unit] {
+    override protected def run(s: S): (Unit, S) = {
+      xs.foreach { keyVal =>
+        value(keyVal._1) = keyVal._2
+      }
+      ((), s)
+    }
+  }
+
+  def fill(xs: Map[Int, A]): ST[S, Unit] =
+    xs.foldLeft(ST[S, Unit](()))((st, ia) => st flatMap (_ => write(ia._1, ia._2)))
 
   def swap(i: Int, j: Int): ST[S,Unit] = for {
     x <- read(i)
@@ -124,9 +135,30 @@ object STArray {
 object Immutable {
   def noop[S] = ST[S,Unit](())
 
-  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = ???
+  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = for {
+    pivotVal <- a.read(pivot)
+    _ <- a.swap(pivot, r)
+    jref <- STRef.apply[S, Int](l)
+    _ <- (l until r).foldLeft(noop[S])((st, i) => for {
+      arr_i <- a.read(i)
+      _ <- if (arr_i < pivotVal) for {
+        j <- jref.read
+        _ <- a.swap(i, j)
+        _ <- jref.write(j + 1)
+      } yield () else ST.apply[S, Unit](())
+    } yield ())
+    j <- jref.read
+    _ <- a.swap(j, r)
+  } yield j
 
-  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] = ???
+  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] =
+    if (l < r) {
+      for {
+        p1 <- partition(a, l, r, l + (r - l) / 2)
+        _ <- qs(a, l, p1 - 1)
+        _ <- qs(a, p1 + 1, r)
+      } yield ()
+    } else noop
 
   def quicksort(xs: List[Int]): List[Int] =
     if (xs.isEmpty) xs else ST.runST(new RunnableST[List[Int]] {
