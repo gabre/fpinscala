@@ -618,6 +618,8 @@ object IO3 {
       val buf = ByteBuffer.allocate(numBytes)
       file.read(buf, fromPosition, (), new CompletionHandler[Integer, Unit] {
         def completed(bytesRead: Integer, ignore: Unit) = {
+          // https://jenkov.com/tutorials/java-nio/asynchronousfilechannel.html
+          // Why flip? https://docs.oracle.com/javase%2F9%2Fdocs%2Fapi%2F%2F/java/nio/ByteBuffer.html#flip--
           val arr = new Array[Byte](bytesRead)
           buf.slice.get(arr, 0, bytesRead)
           cb(Right(arr))
