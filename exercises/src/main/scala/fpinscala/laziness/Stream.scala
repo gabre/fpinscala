@@ -86,6 +86,9 @@ case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
 
 object Stream {
+//  Here, our cons smart constructor takes care of memoizing the by-name arguments for the head and tail of the Cons.
+//  This is a common trick, and it ensures that our thunk will only do its work once, when forced for the first time.
+//  Subsequent forces will return the cached lazy val:
   def cons[A](hd: => A, tl: => Stream[A]): Stream[A] = {
     lazy val head = hd
     lazy val tail = tl
