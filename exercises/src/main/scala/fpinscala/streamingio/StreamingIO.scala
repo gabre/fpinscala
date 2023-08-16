@@ -1,12 +1,13 @@
 package fpinscala.streamingio
 
-import fpinscala.iomonad.{Free, IO, Monad, unsafePerformIO}
+import fpinscala.iomonad.{Free, IO, Monad, Task, unsafePerformIO}
 import fpinscala.streamingio.GeneralizedStreamTransducers.Process.zip
 
 import java.io.{BufferedOutputStream, File, FileOutputStream, PrintStream}
 import language.implicitConversions
 import language.higherKinds
 import language.postfixOps
+import scala.util.Right
 
 object ImperativeAndLazyIO {
 
@@ -524,7 +525,7 @@ object GeneralizedStreamTransducers {
 
                              */
 
-  trait Process[F[_],O] {
+  trait Process[F[_],O] { self =>
     import Process._
 
     /*
@@ -604,7 +605,20 @@ object GeneralizedStreamTransducers {
      * below, this is not tail recursive and responsibility for stack safety
      * is placed on the `Monad` instance.
      */
-    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = ???
+    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = {
+      def go(process: Process[F, O], acc: IndexedSeq[O]): F[IndexedSeq[O]] = {
+        process match {
+          case Await(req, recv) => {
+            val attempted = F.attempt(req)
+            F.flatMap(attempted)(result => go(recv(result), acc))
+          }
+          case Emit(head, tail) => go(tail, acc.appended(head))
+          case Halt(End) => F.unit(acc)
+          case Halt(err) => F.fail(err)
+        }
+      }
+      go(self, IndexedSeq[O]())
+    }
 
     /*
      * We define `Process1` as a type alias - see the companion object
@@ -835,8 +849,8 @@ object GeneralizedStreamTransducers {
         { IO(io.Source.fromFile(filename)) }
         { src =>
             lazy val iter = src.getLines() // a stateful iterator
-            def step = if (iter.hasNext) Some(iter.next()) else None
-            lazy val lines: Process[IO,String] = eval(IO(step)).flatMap {
+            def nextLineMaybe = if (iter.hasNext) Some(iter.next()) else None
+            lazy val lines: Process[IO,String] = eval(IO(nextLineMaybe)).flatMap {
               case None => Halt(End)
               case Some(line) => Emit(line, lines)
             }
@@ -845,10 +859,18 @@ object GeneralizedStreamTransducers {
         { src => eval_ { IO(src.close) } }
 
     /* Exercise 11: Implement `eval`, `eval_`, and use these to implement `lines`. */
-    def eval[F[_],A](a: F[A]): Process[F,A] = ???
+    def eval[F[_],A](a: F[A]): Process[F,A] =
+      await(a) {
+        case Left(err) => Halt(err)
+        case Right(value) => emit(value)
+      }
 
     /* Evaluate the action purely for its effects. */
-    def eval_[F[_],A,B](a: F[A]): Process[F,B] = ???
+    def eval_[F[_],A,B](a: F[A]): Process[F,B] =
+      await(a) {
+        case Left(err) => Halt(err)
+        case Right(_) => Halt(End)
+      }
 
     /* Helper function with better type inference. */
     def evalIO[A](a: IO[A]): Process[IO,A] =
@@ -1009,7 +1031,8 @@ object GeneralizedStreamTransducers {
       eval(IO(a)).flatMap { a => Emit(a, constant(a)) }
 
     /* Exercise 12: Implement `join`. Notice this is the standard monadic combinator! */
-    def join[F[_],A](p: Process[F,Process[F,A]]): Process[F,A] = ???
+    def join[F[_],A](p: Process[F, Process[F,A]]): Process[F,A] =
+      p.flatMap(inner => inner)
 
     /*
      * An example use of the combinators we have so far: incrementally
